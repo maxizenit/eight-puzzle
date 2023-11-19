@@ -7,6 +7,7 @@ import java.util.List;
 import lombok.SneakyThrows;
 import ru.maxizenit.eightpuzzle.board.Board;
 import ru.maxizenit.eightpuzzle.board.BoardUtils;
+import ru.maxizenit.eightpuzzle.heuristic.HeuristicFunction;
 
 /** Дерево состояний. */
 public class StatesTree {
@@ -32,6 +33,9 @@ public class StatesTree {
   /** Кэш состояний. */
   private final StatesCache statesCache = new StatesCache();
 
+  /** Эвристическая функция. */
+  private final HeuristicFunction heuristicFunction;
+
   /** Флаг остановки поиска. */
   private boolean stopSearching = false;
 
@@ -49,14 +53,23 @@ public class StatesTree {
       int endState,
       int maxDepth,
       boolean enabledStepByStepMode,
-      BufferedReader reader) {
+      BufferedReader reader,
+      HeuristicFunction heuristicFunction) {
     this.startState = startState;
     this.endState = endState;
     this.maxDepth = maxDepth;
     this.enabledStepByStepMode = enabledStepByStepMode;
     this.reader = reader;
+    this.heuristicFunction = heuristicFunction;
 
-    root = new StatesTreeNode(BoardUtils.createBoardFromState(startState), 0, null, null);
+    root =
+        new StatesTreeNode(
+            BoardUtils.createBoardFromState(startState),
+            0,
+            null,
+            null,
+            BoardUtils.getChipsOutOfPlaceCount(startState, endState),
+            BoardUtils.getManhattanDistance(startState, endState));
     nodesCount = 1;
   }
 
@@ -73,17 +86,31 @@ public class StatesTree {
             md ->
                 node.getLastMoveDirection() == null
                     || !md.equals(node.getLastMoveDirection().getReverseMoveDirection()))
-        .sorted(Comparator.comparingInt(Enum::ordinal))
         .forEach(
             md -> {
               Board newBoard = new Board(node.getBoard());
               newBoard.move(md);
 
-              StatesTreeNode newNode = new StatesTreeNode(newBoard, node.getDepth() + 1, md, node);
+              StatesTreeNode newNode =
+                  new StatesTreeNode(
+                      newBoard,
+                      node.getDepth() + 1,
+                      md,
+                      node,
+                      BoardUtils.getChipsOutOfPlaceCount(newBoard.getState(), endState),
+                      BoardUtils.getManhattanDistance(newBoard.getState(), endState));
               children.add(newNode);
             });
 
-    node.getChildren().addAll(children);
+    node.getChildren()
+        .addAll(
+            children.stream()
+                .sorted(
+                    Comparator.comparing(
+                        HeuristicFunction.OUT_OF_PLACE.equals(heuristicFunction)
+                            ? StatesTreeNode::getOutOfPlaceNodesCount
+                            : StatesTreeNode::getManhattanDistance))
+                .toList());
     nodesCount += node.getChildren().size();
   }
 
@@ -112,12 +139,18 @@ public class StatesTree {
       reader.readLine();
 
       System.out.printf(
-          "Шаг %d, состояние %09d, глубина %d, ход %s из %s%n",
+          "Шаг %d, состояние %s, глубина %d, ход %s из %s, значение эвристической функции %d%n",
           stepsCount,
-          node.getState(),
+          BoardUtils.convertIntStateToStringState(node.getState()),
           node.getDepth(),
           node.getLastMoveDirection() != null ? node.getLastMoveDirection().getArrow() : "",
-          node.getParent() != null ? String.format("%09d", node.getParent().getState()) : "");
+          node.getParent() != null
+              ? String.format(
+                  "%s", BoardUtils.convertIntStateToStringState(node.getParent().getState()))
+              : "",
+          HeuristicFunction.OUT_OF_PLACE.equals(heuristicFunction)
+              ? node.getOutOfPlaceNodesCount()
+              : node.getManhattanDistance());
       printBorder(node);
     }
 
@@ -172,8 +205,10 @@ public class StatesTree {
   private void printPathToEndState(StatesTreeNode endNode) {
     System.out.println("Целевое состояние достигнуто!");
     System.out.printf(
-        "Путь из состояния %09d в состояние %09d:%n%s%n",
-        startState, endState, getPathToEndState(endNode));
+        "Путь из состояния %s в состояние %s:%n%s%n",
+        BoardUtils.convertIntStateToStringState(startState),
+        BoardUtils.convertIntStateToStringState(endState),
+        getPathToEndState(endNode));
     System.out.printf("Стоимость пути: %d%n", endNode.getDepth());
   }
 
@@ -199,8 +234,16 @@ public class StatesTree {
    * @param node узел, для которого требуется печатать кайму
    */
   private void printBorder(StatesTreeNode node) {
-    System.out.print("Кайма: ");
-    getBorder(node).forEach(n -> System.out.printf("%09d ", n.getState()));
+    System.out.print("Кайма (в скобках - значение эвристической функции): ");
+    getBorder(node)
+        .forEach(
+            n ->
+                System.out.printf(
+                    "%s (%d) | ",
+                    BoardUtils.convertIntStateToStringState(n.getState()),
+                    HeuristicFunction.OUT_OF_PLACE.equals(heuristicFunction)
+                        ? n.getOutOfPlaceNodesCount()
+                        : n.getManhattanDistance()));
     System.out.println();
   }
 

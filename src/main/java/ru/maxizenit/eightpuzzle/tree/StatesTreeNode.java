@@ -27,6 +27,12 @@ public class StatesTreeNode {
   /** Дочерние узлы. */
   private final List<StatesTreeNode> children = new ArrayList<>();
 
+  /** Количество фишек, стоящих не на своём месте. */
+  private final int outOfPlaceNodesCount;
+
+  /** Манхэттенское расстояние. */
+  private final int manhattanDistance;
+
   /**
    * Возвращает состояние узла.
    *

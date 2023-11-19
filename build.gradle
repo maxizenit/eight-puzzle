@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'ru.maxizenit.eightpuzzle'
-version = 'blind'
+version = 'heuristic'
 
 compileJava.options.encoding = 'UTF-8'
 compileTestJava.options.encoding = 'UTF-8'
